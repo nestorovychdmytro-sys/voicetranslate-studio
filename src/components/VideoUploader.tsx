@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 interface VideoUploaderProps {
-  onUpload: (file: File) => void;
+  onUpload: (data: any) => void;
   sourceLanguage: string;
   targetLanguage: string;
 }
@@ -54,7 +54,7 @@ export const VideoUploader = ({ onUpload, sourceLanguage, targetLanguage }: Vide
         description: "Il video è in elaborazione...",
       });
       
-      onUpload(selectedFile);
+      onUpload(data);
     } catch (error) {
       console.error('Error uploading video:', error);
       toast({
