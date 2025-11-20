@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 interface VideoLinkInputProps {
-  onSubmit: (url: string) => void;
+  onSubmit: (data: any) => void;
   sourceLanguage: string;
   targetLanguage: string;
 }
@@ -65,7 +65,7 @@ export const VideoLinkInput = ({ onSubmit, sourceLanguage, targetLanguage }: Vid
         description: "Stiamo scaricando e traducendo il video...",
       });
       
-      onSubmit(url);
+      onSubmit(data);
     } catch (error) {
       console.error('Error processing video:', error);
       toast({

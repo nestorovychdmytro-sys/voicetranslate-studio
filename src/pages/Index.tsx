@@ -11,6 +11,21 @@ const Index = () => {
   const [targetLanguage, setTargetLanguage] = useState<string>("uk");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [result, setResult] = useState<any>(null);
+
+  const handleProcessingComplete = (data: any) => {
+    setResult(data);
+    // Simulate progress animation
+    let currentProgress = 0;
+    const interval = setInterval(() => {
+      currentProgress += 10;
+      setProgress(currentProgress);
+      if (currentProgress >= 100) {
+        clearInterval(interval);
+        setTimeout(() => setIsProcessing(false), 500);
+      }
+    }, 200);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -59,7 +74,11 @@ const Index = () => {
                 
                 <TabsContent value="upload" className="mt-0">
                   <VideoUploader
-                    onUpload={() => setIsProcessing(true)}
+                    onUpload={(data) => {
+                      setIsProcessing(true);
+                      setProgress(0);
+                      handleProcessingComplete(data);
+                    }}
                     sourceLanguage={sourceLanguage}
                     targetLanguage={targetLanguage}
                   />
@@ -67,7 +86,11 @@ const Index = () => {
                 
                 <TabsContent value="link" className="mt-0">
                   <VideoLinkInput
-                    onSubmit={() => setIsProcessing(true)}
+                    onSubmit={(data) => {
+                      setIsProcessing(true);
+                      setProgress(0);
+                      handleProcessingComplete(data);
+                    }}
                     sourceLanguage={sourceLanguage}
                     targetLanguage={targetLanguage}
                   />
@@ -78,6 +101,23 @@ const Index = () => {
             {/* Processing Status */}
             {isProcessing && (
               <ProcessingStatus progress={progress} />
+            )}
+
+            {/* Results */}
+            {result && !isProcessing && (
+              <div className="bg-card rounded-2xl shadow-medium p-8 border border-border mt-8">
+                <h2 className="text-2xl font-semibold mb-6">Risultati traduzione</h2>
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-medium text-sm text-muted-foreground mb-2">Testo originale:</h3>
+                    <p className="text-foreground bg-muted/30 p-4 rounded-lg">{result.originalText}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-sm text-muted-foreground mb-2">Testo tradotto:</h3>
+                    <p className="text-foreground bg-primary/10 p-4 rounded-lg">{result.translatedText}</p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
