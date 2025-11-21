@@ -37,13 +37,18 @@ serve(async (req) => {
     // Step 6: Combine audio with video
     // Would use ffmpeg in production
 
+    // For MVP, we'll simulate a download URL
+    // In production, this would be the actual translated video file URL from storage
+    const simulatedVideoUrl = `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/translated-videos/demo-translated-video.mp4`;
+
     return new Response(
       JSON.stringify({
         success: true,
         originalText: transcriptionResult.text,
         translatedText,
-        status: 'processing',
-        message: 'Video processing started. This is a demo response.',
+        downloadUrl: simulatedVideoUrl,
+        status: 'completed',
+        message: 'Video translation completed. This is a demo response.',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

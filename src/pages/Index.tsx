@@ -5,6 +5,7 @@ import { VideoLinkInput } from "@/components/VideoLinkInput";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { ProcessingStatus } from "@/components/ProcessingStatus";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
   const [sourceLanguage, setSourceLanguage] = useState<string>("auto");
@@ -107,7 +108,7 @@ const Index = () => {
             {result && !isProcessing && (
               <div className="bg-card rounded-2xl shadow-medium p-8 border border-border mt-8">
                 <h2 className="text-2xl font-semibold mb-6">Risultati traduzione</h2>
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div>
                     <h3 className="font-medium text-sm text-muted-foreground mb-2">Testo originale:</h3>
                     <p className="text-foreground bg-muted/30 p-4 rounded-lg">{result.originalText}</p>
@@ -116,6 +117,23 @@ const Index = () => {
                     <h3 className="font-medium text-sm text-muted-foreground mb-2">Testo tradotto:</h3>
                     <p className="text-foreground bg-primary/10 p-4 rounded-lg">{result.translatedText}</p>
                   </div>
+                  {result.downloadUrl && (
+                    <div className="pt-4 border-t border-border">
+                      <Button
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = result.downloadUrl;
+                          link.download = 'translated-video.mp4';
+                          link.click();
+                        }}
+                        size="lg"
+                        className="w-full"
+                      >
+                        <Upload className="w-5 h-5 mr-2 rotate-180" />
+                        Scarica video tradotto
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
