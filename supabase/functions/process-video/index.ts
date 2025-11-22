@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,36 +11,18 @@ serve(async (req) => {
   }
 
   try {
-    const { videoUrl, platform, sourceLanguage, targetLanguage, type } = await req.json();
-    console.log('Processing video:', { videoUrl, platform, sourceLanguage, targetLanguage, type });
+    const { audioBase64, sourceLanguage, targetLanguage } = await req.json();
+    console.log('Processing audio:', { sourceLanguage, targetLanguage });
 
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    if (!audioBase64) {
+      throw new Error('No audio data provided');
+    }
 
-    // Generate unique filename
-    const timestamp = Date.now();
-    const videoId = `video_${timestamp}`;
-    const inputVideoPath = `/tmp/${videoId}_input.mp4`;
-    const inputAudioPath = `/tmp/${videoId}_audio.wav`;
-    const outputAudioPath = `/tmp/${videoId}_translated.mp3`;
-    const outputVideoPath = `/tmp/${videoId}_output.mp4`;
-
-    // Step 1: Download video
-    console.log('Downloading video...');
-    await downloadVideo(videoUrl, inputVideoPath, platform);
-
-    // Step 2: Extract audio from video using ffmpeg
-    console.log('Extracting audio from video...');
-    await extractAudio(inputVideoPath, inputAudioPath);
-
-    // Step 3: Transcribe audio
+    // Step 1: Transcribe audio
     console.log('Transcribing audio...');
-    const transcriptionResult = await transcribeAudio(inputAudioPath, sourceLanguage);
+    const transcriptionResult = await transcribeAudio(audioBase64, sourceLanguage);
 
-    // Step 4: Translate text
+    // Step 2: Translate text
     console.log('Translating text...');
     const translatedText = await translateText(
       transcriptionResult.text,
@@ -49,59 +30,25 @@ serve(async (req) => {
       targetLanguage
     );
 
-    // Step 5: Generate TTS audio
+    // Step 3: Generate TTS audio
     console.log('Generating translated audio...');
-    await generateTTS(translatedText, outputAudioPath, targetLanguage);
-
-    // Step 6: Combine translated audio with original video
-    console.log('Combining audio with video...');
-    await combineAudioVideo(inputVideoPath, outputAudioPath, outputVideoPath);
-
-    // Step 7: Upload to Supabase Storage
-    console.log('Uploading to storage...');
-    const outputFileName = `${videoId}_translated.mp4`;
-    const videoFile = await Deno.readFile(outputVideoPath);
-    
-    const { error: uploadError } = await supabase.storage
-      .from('translated-videos')
-      .upload(outputFileName, videoFile, {
-        contentType: 'video/mp4',
-        upsert: true
-      });
-
-    if (uploadError) throw uploadError;
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('translated-videos')
-      .getPublicUrl(outputFileName);
-
-    // Cleanup temporary files
-    console.log('Cleaning up temporary files...');
-    try {
-      await Deno.remove(inputVideoPath);
-      await Deno.remove(inputAudioPath);
-      await Deno.remove(outputAudioPath);
-      await Deno.remove(outputVideoPath);
-    } catch (cleanupError) {
-      console.error('Cleanup error:', cleanupError);
-    }
+    const ttsAudioBase64 = await generateTTS(translatedText, targetLanguage);
 
     return new Response(
       JSON.stringify({
         success: true,
         originalText: transcriptionResult.text,
         translatedText,
-        downloadUrl: publicUrl,
+        translatedAudioBase64: ttsAudioBase64,
         status: 'completed',
-        message: 'Video translation completed successfully.',
+        message: 'Audio translation completed successfully.',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
   } catch (error) {
-    console.error('Error processing video:', error);
+    console.error('Error processing audio:', error);
     return new Response(
       JSON.stringify({
         success: false,
@@ -115,83 +62,9 @@ serve(async (req) => {
   }
 });
 
-async function downloadVideo(url: string, outputPath: string, platform: string): Promise<void> {
-  if (platform === 'youtube') {
-    // Use yt-dlp to download YouTube videos
-    const ytDlpCmd = new Deno.Command("yt-dlp", {
-      args: [
-        "-f", "mp4",
-        "-o", outputPath,
-        url
-      ],
-    });
-    
-    const { success, stderr } = await ytDlpCmd.output();
-    if (!success) {
-      const errorText = new TextDecoder().decode(stderr);
-      throw new Error(`Failed to download video: ${errorText}`);
-    }
-  } else {
-    // For direct URLs, download using fetch
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to download video');
-    
-    const arrayBuffer = await response.arrayBuffer();
-    await Deno.writeFile(outputPath, new Uint8Array(arrayBuffer));
-  }
-}
-
-async function extractAudio(inputVideo: string, outputAudio: string): Promise<void> {
-  const ffmpegCmd = new Deno.Command("ffmpeg", {
-    args: [
-      "-i", inputVideo,
-      "-vn",
-      "-acodec", "pcm_s16le",
-      "-ar", "24000",
-      "-ac", "1",
-      outputAudio,
-      "-y"
-    ],
-  });
-  
-  const { success, stderr } = await ffmpegCmd.output();
-  if (!success) {
-    const errorText = new TextDecoder().decode(stderr);
-    throw new Error(`Failed to extract audio: ${errorText}`);
-  }
-}
-
-async function combineAudioVideo(inputVideo: string, inputAudio: string, outputVideo: string): Promise<void> {
-  const ffmpegCmd = new Deno.Command("ffmpeg", {
-    args: [
-      "-i", inputVideo,
-      "-i", inputAudio,
-      "-c:v", "copy",
-      "-map", "0:v:0",
-      "-map", "1:a:0",
-      "-shortest",
-      outputVideo,
-      "-y"
-    ],
-  });
-  
-  const { success, stderr } = await ffmpegCmd.output();
-  if (!success) {
-    const errorText = new TextDecoder().decode(stderr);
-    throw new Error(`Failed to combine audio and video: ${errorText}`);
-  }
-}
-
-async function transcribeAudio(audioPath: string, language: string): Promise<{ text: string }> {
+async function transcribeAudio(audioBase64: string, language: string): Promise<{ text: string }> {
   console.log('Transcribing audio in language:', language);
   
-  // Read audio file
-  const audioFile = await Deno.readFile(audioPath);
-  
-  // Convert to base64
-  const base64Audio = btoa(String.fromCharCode(...audioFile));
-  
-  // Use Lovable AI for transcription
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   if (!LOVABLE_API_KEY) {
     throw new Error('LOVABLE_API_KEY not configured');
@@ -204,7 +77,7 @@ async function transcribeAudio(audioPath: string, language: string): Promise<{ t
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      audio: base64Audio,
+      audio: audioBase64,
       model: 'whisper-1',
       language: language === 'auto' ? undefined : language,
     }),
@@ -281,7 +154,7 @@ async function translateText(
   }
 }
 
-async function generateTTS(text: string, outputPath: string, language: string): Promise<void> {
+async function generateTTS(text: string, language: string): Promise<string> {
   const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
   
   if (!ELEVENLABS_API_KEY) {
@@ -323,6 +196,16 @@ async function generateTTS(text: string, outputPath: string, language: string): 
   }
 
   const audioData = await response.arrayBuffer();
-  await Deno.writeFile(outputPath, new Uint8Array(audioData));
+  const uint8Array = new Uint8Array(audioData);
+  
+  // Convert to base64
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  
   console.log('TTS generation completed');
+  return btoa(binary);
 }
