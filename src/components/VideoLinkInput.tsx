@@ -27,10 +27,10 @@ export const VideoLinkInput = ({ onSubmit, sourceLanguage, targetLanguage }: Vid
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!url) {
+    if (!url.trim()) {
       toast({
-        title: "Errore",
-        description: "Inserisci un URL valido",
+        title: "URL richiesto",
+        description: "Inserisci un URL valido del video",
         variant: "destructive",
       });
       return;
@@ -40,37 +40,89 @@ export const VideoLinkInput = ({ onSubmit, sourceLanguage, targetLanguage }: Vid
     if (platform === 'unknown') {
       toast({
         title: "Piattaforma non supportata",
-        description: "Supportiamo solo YouTube, Twitter, Facebook e Instagram",
+        description: "Inserisci un link YouTube, TikTok, Instagram o un link diretto al video",
         variant: "destructive",
       });
       return;
     }
 
     setIsProcessing(true);
+    
     try {
+      toast({
+        title: "Download in corso...",
+        description: "Sto scaricando il video dalla piattaforma",
+      });
+
+      // Import ffmpeg processor
+      const { downloadVideoFromUrl, extractAudioFromVideo, combineAudioWithVideo, fileToBase64 } = await import('@/lib/ffmpegProcessor');
+
+      // Download video
+      const videoFile = await downloadVideoFromUrl(url);
+
+      toast({
+        title: "Estrazione audio...",
+        description: "Sto estraendo l'audio dal video",
+      });
+
+      // Extract audio
+      const audioBlob = await extractAudioFromVideo(videoFile);
+      const audioBase64 = await fileToBase64(audioBlob);
+
+      toast({
+        title: "Elaborazione AI...",
+        description: "Sto trascrivendo e traducendo il contenuto",
+      });
+
+      // Process audio with edge function
       const { data, error } = await supabase.functions.invoke('process-video', {
         body: {
-          videoUrl: url,
-          platform,
+          audioBase64,
           sourceLanguage,
           targetLanguage,
-          type: 'link'
         }
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error || 'Processing failed');
 
       toast({
-        title: "Video in elaborazione!",
-        description: "Stiamo scaricando e traducendo il video...",
+        title: "Combinazione video...",
+        description: "Sto combinando l'audio tradotto con il video",
       });
-      
-      onSubmit(data);
+
+      // Combine translated audio with video
+      const finalVideoBlob = await combineAudioWithVideo(videoFile, data.translatedAudioBase64);
+
+      // Upload to storage
+      const fileName = `video_${Date.now()}_translated.mp4`;
+      const { error: uploadError } = await supabase.storage
+        .from('translated-videos')
+        .upload(fileName, finalVideoBlob, {
+          contentType: 'video/mp4',
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('translated-videos')
+        .getPublicUrl(fileName);
+
+      toast({
+        title: "Elaborazione completata!",
+        description: "Il tuo video è stato tradotto con successo.",
+      });
+
+      onSubmit({
+        ...data,
+        downloadUrl: publicUrl,
+      });
     } catch (error) {
       console.error('Error processing video:', error);
       toast({
-        title: "Errore",
-        description: "Impossibile elaborare il video. Verifica l'URL.",
+        title: "Errore nell'elaborazione",
+        description: error instanceof Error ? error.message : "Si è verificato un errore durante l'elaborazione del video",
         variant: "destructive",
       });
     } finally {

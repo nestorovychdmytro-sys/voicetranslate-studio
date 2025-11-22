@@ -37,29 +37,72 @@ export const VideoUploader = ({ onUpload, sourceLanguage, targetLanguage }: Vide
 
     setIsUploading(true);
     try {
-      // Call the edge function to process the video
+      toast({
+        title: "Estrazione audio...",
+        description: "Sto estraendo l'audio dal video",
+      });
+
+      // Import ffmpeg processor
+      const { extractAudioFromVideo, combineAudioWithVideo, fileToBase64 } = await import('@/lib/ffmpegProcessor');
+
+      // Extract audio
+      const audioBlob = await extractAudioFromVideo(selectedFile);
+      const audioBase64 = await fileToBase64(audioBlob);
+
+      toast({
+        title: "Elaborazione AI...",
+        description: "Sto trascrivendo e traducendo il contenuto",
+      });
+
+      // Process audio with edge function
       const { data, error } = await supabase.functions.invoke('process-video', {
         body: {
-          videoFile: selectedFile,
+          audioBase64,
           sourceLanguage,
           targetLanguage,
-          type: 'upload'
         }
       });
 
       if (error) throw error;
+      if (!data.success) throw new Error(data.error || 'Processing failed');
 
       toast({
-        title: "Video caricato!",
-        description: "Il video è in elaborazione...",
+        title: "Combinazione video...",
+        description: "Sto combinando l'audio tradotto con il video",
       });
-      
-      onUpload(data);
+
+      // Combine translated audio with video
+      const finalVideoBlob = await combineAudioWithVideo(selectedFile, data.translatedAudioBase64);
+
+      // Upload to storage
+      const fileName = `video_${Date.now()}_translated.mp4`;
+      const { error: uploadError } = await supabase.storage
+        .from('translated-videos')
+        .upload(fileName, finalVideoBlob, {
+          contentType: 'video/mp4',
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('translated-videos')
+        .getPublicUrl(fileName);
+
+      toast({
+        title: "Elaborazione completata!",
+        description: "Il tuo video è stato caricato e tradotto con successo.",
+      });
+
+      onUpload({
+        ...data,
+        downloadUrl: publicUrl,
+      });
     } catch (error) {
       console.error('Error uploading video:', error);
       toast({
-        title: "Errore",
-        description: "Impossibile caricare il video. Riprova.",
+        title: "Errore nell'elaborazione",
+        description: error instanceof Error ? error.message : "Si è verificato un errore durante l'elaborazione del video",
         variant: "destructive",
       });
     } finally {
