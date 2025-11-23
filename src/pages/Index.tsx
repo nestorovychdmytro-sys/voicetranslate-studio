@@ -12,20 +12,22 @@ const Index = () => {
   const [targetLanguage, setTargetLanguage] = useState<string>("uk");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [processingStage, setProcessingStage] = useState("");
+  const [estimatedTime, setEstimatedTime] = useState(0);
   const [result, setResult] = useState<any>(null);
+
+  const handleProgress = (prog: number, stage: string, estTime?: number) => {
+    setProgress(prog);
+    setProcessingStage(stage);
+    setEstimatedTime(estTime || 0);
+  };
 
   const handleProcessingComplete = (data: any) => {
     setResult(data);
-    // Simulate progress animation
-    let currentProgress = 0;
-    const interval = setInterval(() => {
-      currentProgress += 10;
-      setProgress(currentProgress);
-      if (currentProgress >= 100) {
-        clearInterval(interval);
-        setTimeout(() => setIsProcessing(false), 500);
-      }
-    }, 200);
+    setProgress(100);
+    setProcessingStage("Completato!");
+    setEstimatedTime(0);
+    setTimeout(() => setIsProcessing(false), 1000);
   };
 
   return (
@@ -76,9 +78,11 @@ const Index = () => {
                 <TabsContent value="upload" className="mt-0">
                   <VideoUploader
                     onUpload={(data) => {
-                      setIsProcessing(true);
-                      setProgress(0);
                       handleProcessingComplete(data);
+                    }}
+                    onProgress={(prog, stage, estTime) => {
+                      if (!isProcessing) setIsProcessing(true);
+                      handleProgress(prog, stage, estTime);
                     }}
                     sourceLanguage={sourceLanguage}
                     targetLanguage={targetLanguage}
@@ -88,9 +92,11 @@ const Index = () => {
                 <TabsContent value="link" className="mt-0">
                   <VideoLinkInput
                     onSubmit={(data) => {
-                      setIsProcessing(true);
-                      setProgress(0);
                       handleProcessingComplete(data);
+                    }}
+                    onProgress={(prog, stage, estTime) => {
+                      if (!isProcessing) setIsProcessing(true);
+                      handleProgress(prog, stage, estTime);
                     }}
                     sourceLanguage={sourceLanguage}
                     targetLanguage={targetLanguage}
@@ -101,7 +107,11 @@ const Index = () => {
 
             {/* Processing Status */}
             {isProcessing && (
-              <ProcessingStatus progress={progress} />
+              <ProcessingStatus 
+                progress={progress} 
+                stage={processingStage}
+                estimatedTimeRemaining={estimatedTime}
+              />
             )}
 
             {/* Results */}

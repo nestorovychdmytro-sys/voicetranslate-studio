@@ -9,9 +9,10 @@ interface VideoLinkInputProps {
   onSubmit: (data: any) => void;
   sourceLanguage: string;
   targetLanguage: string;
+  onProgress?: (progress: number, stage: string, estimatedTime?: number) => void;
 }
 
-export const VideoLinkInput = ({ onSubmit, sourceLanguage, targetLanguage }: VideoLinkInputProps) => {
+export const VideoLinkInput = ({ onSubmit, sourceLanguage, targetLanguage, onProgress }: VideoLinkInputProps) => {
   const [url, setUrl] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();

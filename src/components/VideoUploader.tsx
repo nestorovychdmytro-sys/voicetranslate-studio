@@ -9,9 +9,10 @@ interface VideoUploaderProps {
   onUpload: (data: any) => void;
   sourceLanguage: string;
   targetLanguage: string;
+  onProgress?: (progress: number, stage: string, estimatedTime?: number) => void;
 }
 
-export const VideoUploader = ({ onUpload, sourceLanguage, targetLanguage }: VideoUploaderProps) => {
+export const VideoUploader = ({ onUpload, sourceLanguage, targetLanguage, onProgress }: VideoUploaderProps) => {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -37,24 +38,34 @@ export const VideoUploader = ({ onUpload, sourceLanguage, targetLanguage }: Vide
 
     setIsUploading(true);
     try {
+      const startTime = Date.now();
+      
+      // Stage 1: Audio Extraction (0-20%)
+      onProgress?.(5, "Estrazione audio dal video", 90);
       toast({
         title: "Estrazione audio...",
         description: "Sto estraendo l'audio dal video",
       });
 
-      // Import ffmpeg processor
       const { extractAudioFromVideo, combineAudioWithVideo, fileToBase64 } = await import('@/lib/ffmpegProcessor');
 
-      // Extract audio
-      const audioBlob = await extractAudioFromVideo(selectedFile);
+      const audioBlob = await extractAudioFromVideo(selectedFile, (extractProgress) => {
+        const overallProgress = 5 + (extractProgress / 100) * 15;
+        const elapsed = (Date.now() - startTime) / 1000;
+        const estimated = (elapsed / overallProgress) * (100 - overallProgress);
+        onProgress?.(Math.round(overallProgress), "Estrazione audio dal video", Math.round(estimated));
+      });
+      
+      onProgress?.(20, "Preparazione audio per AI", 70);
       const audioBase64 = await fileToBase64(audioBlob);
 
+      // Stage 2: AI Processing (20-80%)
+      onProgress?.(25, "Trascrizione audio con AI", 60);
       toast({
         title: "Elaborazione AI...",
         description: "Sto trascrivendo e traducendo il contenuto",
       });
 
-      // Process audio with edge function
       const { data, error } = await supabase.functions.invoke('process-video', {
         body: {
           audioBase64,
@@ -66,15 +77,24 @@ export const VideoUploader = ({ onUpload, sourceLanguage, targetLanguage }: Vide
       if (error) throw error;
       if (!data.success) throw new Error(data.error || 'Processing failed');
 
+      onProgress?.(80, "Generazione audio completata", 20);
+
+      // Stage 3: Video Combination (80-95%)
+      onProgress?.(82, "Combinazione audio tradotto con video", 15);
       toast({
         title: "Combinazione video...",
         description: "Sto combinando l'audio tradotto con il video",
       });
 
-      // Combine translated audio with video
-      const finalVideoBlob = await combineAudioWithVideo(selectedFile, data.translatedAudioBase64);
+      const finalVideoBlob = await combineAudioWithVideo(selectedFile, data.translatedAudioBase64, (combineProgress) => {
+        const overallProgress = 82 + (combineProgress / 100) * 13;
+        const elapsed = (Date.now() - startTime) / 1000;
+        const estimated = (elapsed / overallProgress) * (100 - overallProgress);
+        onProgress?.(Math.round(overallProgress), "Combinazione audio tradotto con video", Math.round(estimated));
+      });
 
-      // Upload to storage
+      // Stage 4: Upload (95-100%)
+      onProgress?.(95, "Caricamento video finale", 5);
       const fileName = `video_${Date.now()}_translated.mp4`;
       const { error: uploadError } = await supabase.storage
         .from('translated-videos')
@@ -89,6 +109,7 @@ export const VideoUploader = ({ onUpload, sourceLanguage, targetLanguage }: Vide
         .from('translated-videos')
         .getPublicUrl(fileName);
 
+      onProgress?.(100, "Completato!", 0);
       toast({
         title: "Elaborazione completata!",
         description: "Il tuo video è stato caricato e tradotto con successo.",
