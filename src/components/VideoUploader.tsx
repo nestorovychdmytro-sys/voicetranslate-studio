@@ -4,6 +4,7 @@ import { Upload, FileVideo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { VideoSizeWarning } from "@/components/VideoSizeWarning";
 
 interface VideoUploaderProps {
   onUpload: (data: any) => void;
@@ -133,6 +134,8 @@ export const VideoUploader = ({ onUpload, sourceLanguage, targetLanguage, onProg
 
   return (
     <div className="space-y-4">
+      {selectedFile && selectedFile.size > 10 * 1024 * 1024 && <VideoSizeWarning />}
+      
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all ${
