@@ -8,15 +8,22 @@ export const loadFFmpeg = async (): Promise<FFmpeg> => {
     return ffmpegInstance;
   }
 
+  console.log('Loading FFmpeg.wasm...');
   const ffmpeg = new FFmpeg();
   
+  ffmpeg.on('log', ({ message }) => {
+    console.log('FFmpeg:', message);
+  });
+
   const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
   
+  console.log('Loading FFmpeg core files...');
   await ffmpeg.load({
     coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
     wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
   });
 
+  console.log('FFmpeg loaded successfully');
   ffmpegInstance = ffmpeg;
   return ffmpeg;
 };
@@ -25,19 +32,38 @@ export const extractAudioFromVideo = async (
   videoFile: File,
   onProgress?: (progress: number) => void
 ): Promise<Blob> => {
+  console.log('Starting audio extraction for file:', videoFile.name, 'Size:', (videoFile.size / 1024 / 1024).toFixed(2), 'MB');
+  
+  // Warn if file is large
+  if (videoFile.size > 50 * 1024 * 1024) {
+    console.warn('Warning: Large video file detected. Processing may be very slow or fail.');
+  }
+
   const ffmpeg = await loadFFmpeg();
 
+  let lastProgress = 0;
   ffmpeg.on('progress', ({ progress }) => {
-    if (onProgress) {
-      onProgress(Math.round(progress * 100));
+    const currentProgress = Math.round(progress * 100);
+    if (currentProgress !== lastProgress) {
+      console.log(`Extraction progress: ${currentProgress}%`);
+      lastProgress = currentProgress;
+      if (onProgress) {
+        onProgress(currentProgress);
+      }
     }
   });
 
-  // Write video to FFmpeg file system
+  console.log('Writing video file to FFmpeg virtual filesystem...');
+  const startWrite = Date.now();
   await ffmpeg.writeFile('input.mp4', await fetchFile(videoFile));
+  console.log(`File written in ${Date.now() - startWrite}ms`);
 
-  // Extract audio as WAV
-  await ffmpeg.exec([
+  console.log('Starting FFmpeg audio extraction...');
+  const startExec = Date.now();
+  
+  // Use a timeout to detect if FFmpeg is stuck
+  const timeoutMs = 5 * 60 * 1000; // 5 minutes
+  const execPromise = ffmpeg.exec([
     '-i', 'input.mp4',
     '-vn',
     '-acodec', 'pcm_s16le',
@@ -46,15 +72,22 @@ export const extractAudioFromVideo = async (
     'output.wav'
   ]);
 
-  // Read the output audio file
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Audio extraction timeout: operation took longer than 5 minutes')), timeoutMs);
+  });
+
+  await Promise.race([execPromise, timeoutPromise]);
+  console.log(`Extraction completed in ${((Date.now() - startExec) / 1000).toFixed(1)}s`);
+
+  console.log('Reading extracted audio file...');
   const data = await ffmpeg.readFile('output.wav');
   
-  // Clean up
+  console.log('Cleaning up temporary files...');
   await ffmpeg.deleteFile('input.mp4');
   await ffmpeg.deleteFile('output.wav');
 
-  // Ensure data is Uint8Array and convert to regular ArrayBuffer
   const uint8Data = data instanceof Uint8Array ? new Uint8Array(data) : new Uint8Array(0);
+  console.log('Audio extraction complete. Audio size:', (uint8Data.length / 1024 / 1024).toFixed(2), 'MB');
   return new Blob([uint8Data], { type: 'audio/wav' });
 };
 
