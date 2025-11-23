@@ -103,11 +103,7 @@ export const combineAudioWithVideo = async (
 };
 
 export const downloadVideoFromUrl = async (url: string): Promise<File> => {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('Failed to download video');
-  
-  const blob = await response.blob();
-  return new File([blob], 'video.mp4', { type: 'video/mp4' });
+  throw new Error('Direct URL downloads are not supported due to browser CORS restrictions. Please download the video first and upload it as a file.');
 };
 
 const base64ToBlob = (base64: string, mimeType: string): Blob => {

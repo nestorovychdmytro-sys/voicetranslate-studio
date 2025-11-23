@@ -36,17 +36,12 @@ export const VideoLinkInput = ({ onSubmit, sourceLanguage, targetLanguage }: Vid
       return;
     }
 
-    const platform = detectPlatform(url);
-    if (platform === 'unknown') {
-      toast({
-        title: "Piattaforma non supportata",
-        description: "Inserisci un link YouTube, TikTok, Instagram o un link diretto al video",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProcessing(true);
+    toast({
+      title: "Funzionalità non disponibile",
+      description: "Il download da URL non è supportato a causa delle restrizioni del browser. Scarica il video e caricalo come file.",
+      variant: "destructive",
+    });
+    return;
     
     try {
       toast({
